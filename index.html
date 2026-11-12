@@ -200,17 +200,18 @@ function parseRuleString(string) {
             break;
         }
         const digit = Number(string[i]);
-        if (digit == NaN) throw Error(`Invalid rule string, Expected a digit, got '${string[i]}'`);
+        if (Number.isNaN(digit)) throw Error(`Invalid rule string, Expected a digit, got '${string[i]}'`);
         born.push(digit);
     }
 
     if (!s_found) throw Error("Rule string is missing /!");
     
     if (string[++i] != 'S') throw Error("Rule string is missing S!")
-
+    i++;
     for (i; i < string.length; i++) {
         const digit = Number(string[i]);
-        if (digit == NaN) throw Error(`Invalid rule string, Expected a digit, got '${string[i]}'`);
+        if (Number.isNaN(digit)) throw Error(`Invalid rule string, Expected a digit, got '${string[i]}'`);
+        console.log({digit})
         survive.push(digit);
     }
 
@@ -300,7 +301,7 @@ window.addEventListener("load", (e) => {
         gl.uniform1i(texture_location, texture_index)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-        requestAnimationFrame(draw)
+        setTimeout(() => requestAnimationFrame(draw), 10);
     }
     requestAnimationFrame(draw);
    
