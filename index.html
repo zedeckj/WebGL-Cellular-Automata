@@ -4,19 +4,29 @@
         <style>
             
             body {
+                position: relative;
                 background-color: black;
                 color: white;
             }
             canvas {
                 image-rendering: pixelated;
             }
-            .header {
-                display: flex;
+            header {
+                position: sticky;
+                top: 0px;
+                left: 5px;
+                background-color: black;
+            }
+            header > div {
+                            display: flex;
+
                 align-items: center;
                 gap: 20px;
-                height: min-content
+                height: min-content;
             }
-
+            h1 {
+                font-size: medium;
+            }
         </style>
         <script>
 
@@ -69,6 +79,42 @@ void main(void) {
 }
 `
 
+
+const fragmentShader512 = `#version 300 es
+precision highp float;
+in vec2 aVert;
+uniform int mode;
+layout (location = 0) out vec4 FragColor;
+uniform sampler2D inp;
+uniform int rule[16];
+
+void main(void) {
+    if (mode == 1) {
+        int current = int(texelFetch(inp, ivec2(gl_FragCoord.xy), 0).r);
+        int neighbors = 0;
+        int n = 1;
+        for (int x = -1; x < 2; x++) {
+            for (int y = -1; y < 2; y++) {
+                vec2 delta = vec2(float(x),float(y));
+                int v = int(texelFetch(inp, ivec2(gl_FragCoord.xy + delta), 0).r);
+                if (v == 1) neighbors |= n;   
+                n <<= 1;
+            }
+        }
+        int segment = neighbors / 32;
+        int bit = neighbors % 32;
+        
+        float v = (rule[segment] & bit) > 0 ? 1.0 : 0.0;
+
+        FragColor = vec4(vec3(v), 1.0);
+    }
+
+    else {
+        FragColor = texelFetch(inp, ivec2(gl_FragCoord.xy), 0);
+    }
+}
+`
+
 function makeProgram(gl, vertex, fragment) {
     const program = gl.createProgram();
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -83,6 +129,10 @@ function makeProgram(gl, vertex, fragment) {
     return program;
 }
 
+let speed;
+let range;
+let rulestring; 
+let start;
 
 function randomInitialTexture(gl) {
     const texture = gl.createTexture();
@@ -92,16 +142,30 @@ function randomInitialTexture(gl) {
     const data = new Uint8Array(len);
     const miniSegs = [];
     const SEGS = 500;
-    for (let x = 0; x < gl.canvas.width / SEGS; x++) {
-        for (let y = 0; y < gl.canvas.height / SEGS; y++) {
-            miniSegs.push(Math.random());
+    if (start == "sectioned") {
+        for (let x = 0; x < gl.canvas.width / SEGS; x++) {
+            for (let y = 0; y < gl.canvas.height / SEGS; y++) {
+                miniSegs.push(Math.random());
+            }
         }
     }
 
     let x = 0;
     let y = 0;
     for (let i = 0; i < len; i += 4) {
-        const v = miniSegs[Math.floor(x/SEGS) + Math.floor(y/SEGS) * Math.floor(gl.canvas.width/SEGS)];
+        let v;
+        switch (start) {
+            case "sectioned":
+                v = miniSegs[Math.floor(x/SEGS) + Math.floor(y/SEGS) * Math.floor(gl.canvas.width/SEGS)];
+                break;
+            case "noise":
+                v = 0.5;
+                break;
+            case "circle": 
+                let xx = x - gl.canvas.width/2;
+                let yy = y - gl.canvas.height/2;
+                v = Math.sqrt(xx * xx + yy * yy) < gl.canvas.width/4 ? 0.5 : 0;
+        }
         if (Math.random() < v) {
             data[i] = 255;
             data[i+1] = 255;
@@ -135,6 +199,19 @@ function randomInitialTexture(gl) {
 
 }
 
+function random512Rule() {
+    const bytes = [];
+    for (let i = 0; i < 64; i++) {
+        bytes.push(Math.floor(Math.random() > 0.5 ? 256 * Math.random() : 0));
+    }
+    const u8s = new Uint8Array(bytes);
+    return u8s.toBase64();
+}
+
+function decode512Rule(asc) {
+    const u8 = Uint8Array.fromBase64(asc);
+    return new Uint32Array(u8.buffer);
+}
 
 function emptyTexture(gl) {
     const texture = gl.createTexture();
@@ -182,12 +259,10 @@ function randomRuleString() {
     return `B${born.join("")}/S${survive.join("")}`
 
 }
-let speed;
-let range;
-let rulestring; 
+
 
 function gotoRandomRule() {
-    window.location.search = `?rule=${randomRuleString()}&speed=${speed}`
+    window.location.search = `?rule=${encodeURIComponent(random512Rule())}&speed=${speed}&start=${start}`
 }
 
 function parseRuleString(string) {
@@ -221,23 +296,31 @@ function parseRuleString(string) {
     return {born, survive};
 
 }
+function circle() {
+    window.location.search = `?rule=${rulestring}&speed=${speed}&start=circle`
+}
 
+function sectioned() {
+    window.location.search = `?rule=${rulestring}&speed=${speed}&start=sectioned`
+}
 
-function restart() {
-    window.location.search = `?rule=${rulestring}&speed=${speed}`
+function noise() {
+    window.location.search = `?rule=${rulestring}&speed=${speed}&start=noise`
 }
 function updateSpeed() {
     speed = Number(range.value);
 }
 
 window.addEventListener("load", (e) => {
+    
     const params = new URLSearchParams(window.location.search);
     speed = params.get("speed") ?? 150;
+    start = params.get("start") ?? "circle";
     console.log(params)
     let rule;
     try {
-        const str = params.get("rule") ?? "B3/S23"
-        rule = parseRuleString(str);
+        const str = params.get("rule") ?? random512Rule();
+        rule = decode512Rule(str);
         rulestring = str;
         const h1 = document.getElementById("rule");
         h1.innerText = str;
@@ -275,7 +358,7 @@ window.addEventListener("load", (e) => {
     gl.clearColor(0,0,0,1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const program = makeProgram(gl, vertexShader, fragmentShader);
+    const program = makeProgram(gl, vertexShader, fragmentShader512);
     gl.useProgram(program);
     const vert = gl.getAttribLocation(program, "vert");
 
@@ -287,8 +370,9 @@ window.addEventListener("load", (e) => {
     const mode_location = gl.getUniformLocation(program, "mode");
 
     
-    const born_location = gl.getUniformLocation(program, "born");
-    const survive_location = gl.getUniformLocation(program, "survive");
+    // const born_location = gl.getUniformLocation(program, "born");
+    // const survive_location = gl.getUniformLocation(program, "survive");
+    const rule_location = gl.getUniformLocation(program, "rule");
     gl.vertexAttribPointer(
         vert,
         2,
@@ -298,8 +382,9 @@ window.addEventListener("load", (e) => {
         0,
     );
     gl.enableVertexAttribArray(vert);
-    gl.uniform1i(born_location, ruleComp(...rule.born));
-    gl.uniform1i(survive_location, ruleComp(...rule.survive));
+    gl.uniform1iv(rule_location, rule);
+    // gl.uniform1i(born_location, ruleComp(...rule.born));
+    // gl.uniform1i(survive_location, ruleComp(...rule.survive));
 
     function draw() {
         gl.uniform1i(mode_location, 1);
@@ -324,14 +409,21 @@ window.addEventListener("load", (e) => {
         </script>
     </head>
     <body>
-        <div class = "header">
+        <header>
             <h1 id = "rule"></h1>
-            <button onclick="gotoRandomRule()">Random Rule</button>
-            <h2>Speed</h2>
-            <input type = "range" id = "speed"  oninput="updateSpeed()" min = "0" max = "180" value = "150"/>
-            <button onclick="restart()">Reset</button>
-        </div>
-        <canvas id = "canvas" width="2048" height = "2048"></canvas>
+            <div>
+                <button onclick="gotoRandomRule()">Random Rule</button>
+                <h2>Speed</h2>
+                <input type = "range" id = "speed"  oninput="updateSpeed()" min = "0" max = "180" value = "150"/>
+                <button onclick="circle()">Circle</button>
+                <button onclick="noise()">Noise</button>
+                <button onclick="sectioned()">Sectioned</button>
+            </div>
+        </header>
+        <main>
+
+        <canvas id = "canvas" width="512" height = "512"></canvas>
+        </main>
     </body>
 
 </html>
