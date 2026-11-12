@@ -224,7 +224,7 @@ function parseRuleString(string) {
 
 
 function restart() {
-    window.location.search = `?rule=git${rulestring}&speed=${speed}`
+    window.location.search = `?rule=${rulestring}&speed=${speed}`
 }
 function updateSpeed() {
     speed = Number(range.value);
