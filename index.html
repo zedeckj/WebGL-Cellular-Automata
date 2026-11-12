@@ -182,9 +182,12 @@ function randomRuleString() {
     return `B${born.join("")}/S${survive.join("")}`
 
 }
+let speed;
+let range;
+let rulestring; 
 
 function gotoRandomRule() {
-    window.location.search = `?rule=${randomRuleString()}`
+    window.location.search = `?rule=${randomRuleString()}&speed=${speed}`
 }
 
 function parseRuleString(string) {
@@ -220,14 +223,22 @@ function parseRuleString(string) {
 }
 
 
+function restart() {
+    window.location.search = `?rule=git${rulestring}&speed=${speed}`
+}
+function updateSpeed() {
+    speed = Number(range.value);
+}
+
 window.addEventListener("load", (e) => {
     const params = new URLSearchParams(window.location.search);
+    speed = params.get("speed") ?? 150;
     console.log(params)
     let rule;
     try {
         const str = params.get("rule") ?? "B3/S23"
         rule = parseRuleString(str);
-        console.log({rule})
+        rulestring = str;
         const h1 = document.getElementById("rule");
         h1.innerText = str;
     }
@@ -236,6 +247,8 @@ window.addEventListener("load", (e) => {
         h1.innerText = e;
         return;
     }
+    range = document.getElementById("speed");
+    range.value = new String(speed);
 
     const canvas = document.getElementById("canvas");
     const gl = canvas.getContext("webgl2", { antialias: false });
@@ -300,8 +313,9 @@ window.addEventListener("load", (e) => {
         gl.uniform1i(mode_location, 0);
         gl.uniform1i(texture_location, texture_index)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-        setTimeout(() => requestAnimationFrame(draw), 10);
+        const s = 200 - speed;
+        if (s) setTimeout(() => requestAnimationFrame(draw), s);
+        else requestAnimationFrame(draw)
     }
     requestAnimationFrame(draw);
    
@@ -313,6 +327,9 @@ window.addEventListener("load", (e) => {
         <div class = "header">
             <h1 id = "rule"></h1>
             <button onclick="gotoRandomRule()">Random Rule</button>
+            <h2>Speed</h2>
+            <input type = "range" id = "speed"  oninput="updateSpeed()" min = "0" max = "200" value = "150"/>
+            <button onclick="restart()">Reset</button>
         </div>
         <canvas id = "canvas" width="2048" height = "2048"></canvas>
     </body>
