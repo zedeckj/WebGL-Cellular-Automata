@@ -10,6 +10,12 @@
             canvas {
                 image-rendering: pixelated;
             }
+            .header {
+                display: flex;
+                align-items: center;
+                gap: 20px;
+                height: min-content
+            }
 
         </style>
         <script>
@@ -161,7 +167,24 @@ function ruleComp() {
     for (let i = 0; i < arguments.length; i++) {
         value |= (1 << arguments[i]);
     }
+    console.log({value, arguments})
     return value;
+}
+
+function randomRuleString() {
+    const born = [];
+    const survive = [];
+    for (let i = 0; i < 9; i++) {
+        if (Math.random() < 0.3) born.push(`${i}`);
+        if (Math.random() < 0.3) survive.push(`${i}`);
+    }
+
+    return `B${born.join("")}/S${survive.join("")}`
+
+}
+
+function gotoRandomRule() {
+    window.location.search = `?rule=${randomRuleString()}`
 }
 
 function parseRuleString(string) {
@@ -185,7 +208,7 @@ function parseRuleString(string) {
     
     if (string[++i] != 'S') throw Error("Rule string is missing S!")
 
-    for (i = 1; i < string.length; i++) {
+    for (i; i < string.length; i++) {
         const digit = Number(string[i]);
         if (digit == NaN) throw Error(`Invalid rule string, Expected a digit, got '${string[i]}'`);
         survive.push(digit);
@@ -201,8 +224,9 @@ window.addEventListener("load", (e) => {
     console.log(params)
     let rule;
     try {
-        const str = params.get("rule")
+        const str = params.get("rule") ?? "B3/S23"
         rule = parseRuleString(str);
+        console.log({rule})
         const h1 = document.getElementById("rule");
         h1.innerText = str;
     }
@@ -285,7 +309,10 @@ window.addEventListener("load", (e) => {
         </script>
     </head>
     <body>
-        <h1 id = "rule"></h1>
+        <div class = "header">
+            <h1 id = "rule"></h1>
+            <button onclick="gotoRandomRule()">Random Rule</button>
+        </div>
         <canvas id = "canvas" width="2048" height = "2048"></canvas>
     </body>
 
