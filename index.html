@@ -132,6 +132,7 @@ function makeProgram(gl, vertex, fragment) {
 let speed;
 let range;
 let rulestring; 
+let enc_rulestring;
 let start;
 
 function randomInitialTexture(gl) {
@@ -141,7 +142,7 @@ function randomInitialTexture(gl) {
     const len = gl.canvas.width * gl.canvas.height * 4;
     const data = new Uint8Array(len);
     const miniSegs = [];
-    const SEGS = 500;
+    const SEGS = 64;
     if (start == "sectioned") {
         for (let x = 0; x < gl.canvas.width / SEGS; x++) {
             for (let y = 0; y < gl.canvas.height / SEGS; y++) {
@@ -297,15 +298,15 @@ function parseRuleString(string) {
 
 }
 function circle() {
-    window.location.search = `?rule=${rulestring}&speed=${speed}&start=circle`
+    window.location.search = `?rule=${enc_rulestring}&speed=${speed}&start=circle`
 }
 
 function sectioned() {
-    window.location.search = `?rule=${rulestring}&speed=${speed}&start=sectioned`
+    window.location.search = `?rule=${enc_rulestring}&speed=${speed}&start=sectioned`
 }
 
 function noise() {
-    window.location.search = `?rule=${rulestring}&speed=${speed}&start=noise`
+    window.location.search = `?rule=${enc_rulestring}&speed=${speed}&start=noise`
 }
 function updateSpeed() {
     speed = Number(range.value);
@@ -322,7 +323,8 @@ window.addEventListener("load", (e) => {
         const str = params.get("rule") ?? random512Rule();
         rule = decode512Rule(str);
         rulestring = str;
-        const h1 = document.getElementById("rule");
+      	enc_rulestring = encodeURIComponent(str);   
+				const h1 = document.getElementById("rule");
         h1.innerText = str;
     }
     catch (e) {
