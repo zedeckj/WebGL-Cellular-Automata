@@ -27,6 +27,12 @@
             h1 {
                 font-size: medium;
             }
+            main {
+                display: flex;
+            }
+            code {
+                font-size: 5pt;
+            }
         </style>
         <script>
 
@@ -50,6 +56,10 @@ uniform sampler2D inp;
 uniform int survive;
 uniform int born;
 
+int valueAt(vec2 position) {
+	return int(texelFetch(inp, ivec2(gl_FragCoord.xy + delta), 0).r);
+}
+
 void main(void) {
     if (mode == 1) {
         int current = int(texelFetch(inp, ivec2(gl_FragCoord.xy), 0).r);
@@ -58,7 +68,7 @@ void main(void) {
             for (int y = -1; y < 2; y++) {
                 if (x == 0 && y == 0) continue;
                 vec2 delta = vec2(float(x),float(y));
-                neighbors += int(texelFetch(inp, ivec2(gl_FragCoord.xy + delta), 0).r);
+                neighbors += valueAt(gl_FragCoord.xy + delta); 
             }
         }
         float v;
@@ -82,30 +92,31 @@ void main(void) {
 
 const fragmentShader512 = `#version 300 es
 precision highp float;
+precision highp usampler2D;
 in vec2 aVert;
 uniform int mode;
 layout (location = 0) out vec4 FragColor;
 uniform sampler2D inp;
-uniform int rule[16];
+uniform usampler2D rule;
 
 void main(void) {
     if (mode == 1) {
-        int current = int(texelFetch(inp, ivec2(gl_FragCoord.xy), 0).r);
-        int neighbors = 0;
-        int n = 1;
-        for (int x = -1; x < 2; x++) {
-            for (int y = -1; y < 2; y++) {
+        uint neighbors = 0u;
+        uint n = 1u;
+        for (int x = -2; x < 3; x++) {
+            for (int y = -2; y < 3; y++) {
                 vec2 delta = vec2(float(x),float(y));
                 int v = int(texelFetch(inp, ivec2(gl_FragCoord.xy + delta), 0).r);
-                if (v == 1) neighbors |= n;   
-                n <<= 1;
+                if (v == 1) neighbors |= n;
+                n <<= 1u;
             }
         }
-        int segment = neighbors / 32;
-        int bit = neighbors % 32;
-        
-        float v = (rule[segment] & bit) > 0 ? 1.0 : 0.0;
-
+        uint bit = 1u << (neighbors % 32u);
+        uint flatted = neighbors/32u;
+        uint yf = flatted / 1024u;
+        uint xf = flatted % 1024u;
+        uint fetched = texelFetch(rule, ivec2(xf, yf), 0).r;
+        float v = (fetched & bit) > 0u ? 1.0 : 0.0;
         FragColor = vec4(vec3(v), 1.0);
     }
 
@@ -114,6 +125,8 @@ void main(void) {
     }
 }
 `
+
+
 
 function makeProgram(gl, vertex, fragment) {
     const program = gl.createProgram();
@@ -150,7 +163,6 @@ function randomInitialTexture(gl) {
             }
         }
     }
-
     let x = 0;
     let y = 0;
     for (let i = 0; i < len; i += 4) {
@@ -209,9 +221,44 @@ function random512Rule() {
     return u8s.toBase64();
 }
 
+function random5x5Rule() {
+    const bytes = [];
+    for (let i = 0; i < 4194304; i++) {
+        bytes.push(Math.floor(Math.random() > 0.8 ? 256 * Math.random() : 0));
+    }
+    const u8s = new Uint8Array(bytes);
+    return u8s.toBase64();
+}
+
 function decode512Rule(asc) {
     const u8 = Uint8Array.fromBase64(asc);
     return new Uint32Array(u8.buffer);
+}
+
+function ruleTexture(gl, ruleStr) {
+    const u8 = Uint8Array.fromBase64(ruleStr);
+    const data = new Uint32Array(u8.buffer);
+    const texture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    const d = Math.sqrt(data.length)
+    console.log({d})
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.R32UI,
+        d,
+        d,
+        0,
+        gl.RED_INTEGER,
+        gl.UNSIGNED_INT,
+        data,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return texture
 }
 
 function emptyTexture(gl) {
@@ -263,7 +310,8 @@ function randomRuleString() {
 
 
 function gotoRandomRule() {
-    window.location.search = `?rule=${encodeURIComponent(random512Rule())}&speed=${speed}&start=${start}`
+    window.location.reload();
+    //window.location.search = `?rule=${encodeURIComponent(random5x5Rule())}&speed=${speed}&start=${start}`
 }
 
 function parseRuleString(string) {
@@ -298,15 +346,15 @@ function parseRuleString(string) {
 
 }
 function circle() {
-    window.location.search = `?rule=${enc_rulestring}&speed=${speed}&start=circle`
+    window.location.search = `?speed=${speed}&start=circle`
 }
 
 function sectioned() {
-    window.location.search = `?rule=${enc_rulestring}&speed=${speed}&start=sectioned`
+    window.location.search = `?speed=${speed}&start=sectioned`
 }
 
 function noise() {
-    window.location.search = `?rule=${enc_rulestring}&speed=${speed}&start=noise`
+    window.location.search = `?speed=${speed}&start=noise`
 }
 function updateSpeed() {
     speed = Number(range.value);
@@ -319,24 +367,25 @@ window.addEventListener("load", (e) => {
     start = params.get("start") ?? "circle";
     console.log(params)
     let rule;
+
+    const canvas = document.getElementById("canvas");
+    const gl = canvas.getContext("webgl2", { antialias: false });
     try {
-        const str = params.get("rule") ?? random512Rule();
-        rule = decode512Rule(str);
+        const str = random5x5Rule();
+        rule = ruleTexture(gl, str)
         rulestring = str;
       	enc_rulestring = encodeURIComponent(str);   
-				const h1 = document.getElementById("rule");
+		const h1 = document.getElementById("rule");
         h1.innerText = str;
     }
     catch (e) {
-        const h1 = document.getElementById("rule");
+        const h1 = document.getElementById("error");
         h1.innerText = e;
         return;
     }
     range = document.getElementById("speed");
     range.value = new String(speed);
 
-    const canvas = document.getElementById("canvas");
-    const gl = canvas.getContext("webgl2", { antialias: false });
     const textures = [randomInitialTexture(gl), emptyTexture(gl)];
 
     const fbos = [];
@@ -370,7 +419,6 @@ window.addEventListener("load", (e) => {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
     const texture_location = gl.getUniformLocation(program, "inp");
     const mode_location = gl.getUniformLocation(program, "mode");
-
     
     // const born_location = gl.getUniformLocation(program, "born");
     // const survive_location = gl.getUniformLocation(program, "survive");
@@ -384,7 +432,7 @@ window.addEventListener("load", (e) => {
         0,
     );
     gl.enableVertexAttribArray(vert);
-    gl.uniform1iv(rule_location, rule);
+    gl.uniform1i(rule_location, 2);
     // gl.uniform1i(born_location, ruleComp(...rule.born));
     // gl.uniform1i(survive_location, ruleComp(...rule.survive));
 
@@ -412,7 +460,7 @@ window.addEventListener("load", (e) => {
     </head>
     <body>
         <header>
-            <h1 id = "rule"></h1>
+            <h1 id = "error"></h1>
             <div>
                 <button onclick="gotoRandomRule()">Random Rule</button>
                 <h2>Speed</h2>
@@ -423,8 +471,10 @@ window.addEventListener("load", (e) => {
             </div>
         </header>
         <main>
-
+        <div>
         <canvas id = "canvas" width="512" height = "512"></canvas>
+        </div>
+        <code id = "rule"></code>
         </main>
     </body>
 
